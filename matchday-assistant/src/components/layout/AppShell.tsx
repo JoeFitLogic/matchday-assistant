@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LayoutDashboard, Users, CalendarDays, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, CalendarDays, LogOut, UserCog } from "lucide-react";
 
 type NavItem = { href: string; label: string; icon: React.ReactNode };
 
@@ -7,6 +7,7 @@ const NAV: NavItem[] = [
   { href: "/dashboard", label: "Home", icon: <LayoutDashboard className="w-5 h-5" /> },
   { href: "/sessions", label: "Sessions", icon: <CalendarDays className="w-5 h-5" /> },
   { href: "/players", label: "Squad", icon: <Users className="w-5 h-5" /> },
+  { href: "/coaches", label: "Coaches", icon: <UserCog className="w-5 h-5" /> },
 ];
 
 export default function AppShell({
@@ -39,7 +40,7 @@ export default function AppShell({
       </header>
       <main className="max-w-3xl mx-auto px-4 py-4">{children}</main>
       <nav className="fixed bottom-0 inset-x-0 z-30 bg-bg-surface border-t border-border">
-        <div className="max-w-3xl mx-auto grid grid-cols-3">
+        <div className="max-w-3xl mx-auto grid grid-cols-4">
           {NAV.map((item) => (
             <Link
               key={item.href}

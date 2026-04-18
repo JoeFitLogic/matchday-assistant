@@ -5,8 +5,10 @@ import AvailabilityTab from "./AvailabilityTab";
 import TeamsTab from "./TeamsTab";
 import FixturesTab from "./FixturesTab";
 import SessionReadiness from "./SessionReadiness";
+import DeleteSessionButton from "./DeleteSessionButton";
 import type {
   Attendance,
+  Coach,
   Match,
   Player,
   Session,
@@ -24,6 +26,7 @@ export default function SessionDetail({
   initialTeamPlayers,
   initialAttendance,
   initialMatches,
+  coaches,
 }: {
   clubId: string;
   session: Session;
@@ -32,6 +35,7 @@ export default function SessionDetail({
   initialTeamPlayers: TeamPlayer[];
   initialAttendance: Attendance[];
   initialMatches: Match[];
+  coaches: Coach[];
 }) {
   const [tab, setTab] = useState<Tab>("availability");
   const [players] = useState<Player[]>(initialPlayers);
@@ -104,6 +108,7 @@ export default function SessionDetail({
           attendance={attendance}
           teams={teams}
           teamPlayers={teamPlayers}
+          coaches={coaches}
           setTeams={setTeams}
           setTeamPlayers={setTeamPlayers}
           readOnly={readOnly}
@@ -130,6 +135,10 @@ export default function SessionDetail({
         players={players}
         matches={matches}
       />
+
+      <div className="mt-6 pt-6 border-t border-border">
+        <DeleteSessionButton sessionId={session.id} teamIds={teams.map((t) => t.id)} />
+      </div>
     </>
   );
 }

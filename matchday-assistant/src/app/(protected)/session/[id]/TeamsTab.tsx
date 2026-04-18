@@ -6,7 +6,7 @@ import AbilityBadge from "@/components/ui/AbilityBadge";
 import GoalkeeperBadge from "@/components/ui/GoalkeeperBadge";
 import { createClient } from "@/lib/supabase/client";
 import { balanceTeams, isGoalkeeper } from "@/lib/engines/teamBalancer";
-import type { Attendance, Player, Team, TeamPlayer } from "@/lib/types/database";
+import type { Attendance, Coach, Player, Team, TeamPlayer } from "@/lib/types/database";
 
 type Props = {
   clubId: string;
@@ -16,6 +16,7 @@ type Props = {
   attendance: Attendance[];
   teams: Team[];
   teamPlayers: TeamPlayer[];
+  coaches: Coach[];
   setTeams: React.Dispatch<React.SetStateAction<Team[]>>;
   setTeamPlayers: React.Dispatch<React.SetStateAction<TeamPlayer[]>>;
   readOnly?: boolean;
@@ -30,6 +31,7 @@ export default function TeamsTab({
   attendance,
   teams,
   teamPlayers,
+  coaches,
   setTeams,
   setTeamPlayers,
   readOnly = false,
@@ -311,13 +313,23 @@ export default function TeamsTab({
                           {teamPlayersList.length}
                         </span>
                       </div>
-                      <input
+                      <select
                         disabled={readOnly}
                         className="input h-9 min-h-0 text-sm mb-2 disabled:opacity-100"
-                        placeholder="Coach name"
-                        value={team.coach_name ?? ""}
-                        onChange={(e) => updateTeam(team.id, { coach_name: e.target.value })}
-                      />
+                        value={team.coach_id ?? ""}
+                        onChange={(e) =>
+                          updateTeam(team.id, {
+                            coach_id: e.target.value || null,
+                          })
+                        }
+                      >
+                        <option value="">No coach assigned</option>
+                        {coaches.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.first_name} {c.last_name}
+                          </option>
+                        ))}
+                      </select>
                       <div className="flex items-center gap-2 text-[11px] text-slate-400 mb-3">
                         <span>Adv {counts.Advanced}</span>
                         <span>·</span>

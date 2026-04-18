@@ -80,8 +80,21 @@ export type TeamRow = {
   team_name: string;
   team_colour: string | null;
   coach_name: string | null;
+  coach_id: string | null;
   slot_number: number;
   slot_label: string | null;
+};
+
+export type CoachRow = {
+  id: string;
+  club_id: string;
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  phone: string | null;
+  notes: string | null;
+  is_active: boolean;
+  created_at: string;
 };
 
 export type TeamPlayerRow = {
@@ -296,6 +309,15 @@ export type Database = {
         };
         Update: Partial<CustomAttributeScoreRow>;
       };
+      coaches: {
+        Row: CoachRow;
+        Insert: Partial<CoachRow> & {
+          club_id: string;
+          first_name: string;
+          last_name: string;
+        };
+        Update: Partial<CoachRow>;
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -313,3 +335,4 @@ export type Match = MatchRow;
 export type Club = ClubRow;
 export type Season = SeasonRow;
 export type UserProfile = UserProfileRow;
+export type Coach = CoachRow;

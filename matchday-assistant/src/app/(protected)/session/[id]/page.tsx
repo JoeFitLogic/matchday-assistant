@@ -6,6 +6,7 @@ import { getCoachContext } from "@/lib/club";
 import { formatUKDate } from "@/lib/utils";
 import type {
   Attendance,
+  Coach,
   Match,
   Player,
   Session,
@@ -28,7 +29,7 @@ export default async function SessionDetailPage({ params }: { params: { id: stri
 
   if (!session) notFound();
 
-  const [playersRes, teamsRes, teamPlayersRes, attendanceRes, matchesRes] =
+  const [playersRes, teamsRes, teamPlayersRes, attendanceRes, matchesRes, coachesRes] =
     await Promise.all([
       supabase.from("players").select("*").eq("club_id", clubId).eq("is_active", true),
       supabase
@@ -40,6 +41,12 @@ export default async function SessionDetailPage({ params }: { params: { id: stri
       supabase.from("team_players").select("*").eq("club_id", clubId),
       supabase.from("attendance").select("*").eq("session_id", session.id),
       supabase.from("matches").select("*").eq("session_id", session.id),
+      supabase
+        .from("coaches")
+        .select("*")
+        .eq("club_id", clubId)
+        .eq("is_active", true)
+        .order("first_name", { ascending: true }),
     ]);
 
   const teams = (teamsRes.data ?? []) as Team[];
@@ -58,6 +65,7 @@ export default async function SessionDetailPage({ params }: { params: { id: stri
         initialTeamPlayers={teamPlayers}
         initialAttendance={(attendanceRes.data ?? []) as Attendance[]}
         initialMatches={(matchesRes.data ?? []) as Match[]}
+        coaches={(coachesRes.data ?? []) as Coach[]}
       />
     </AppShell>
   );
