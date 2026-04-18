@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Shuffle, UserPlus, X, AlertTriangle, Clock } from "lucide-react";
 import AbilityBadge from "@/components/ui/AbilityBadge";
 import GoalkeeperBadge from "@/components/ui/GoalkeeperBadge";
+import SiblingBadge from "@/components/ui/SiblingBadge";
 import { createClient } from "@/lib/supabase/client";
 import { balanceTeams, isGoalkeeper } from "@/lib/engines/teamBalancer";
 import type { Attendance, Coach, Player, Team, TeamPlayer } from "@/lib/types/database";
@@ -368,9 +369,12 @@ export default function TeamsTab({
                                       : "bg-bg-elevated border-border hover:border-border-strong"
                                   }`}
                                 >
-                                  <span className="truncate text-sm font-medium flex items-center gap-2">
+                                  <span className="truncate text-sm font-medium flex items-center gap-1.5 min-w-0">
                                     {gk && <GoalkeeperBadge compact />}
-                                    {p.first_name} {p.last_name}
+                                    <span className="truncate">
+                                      {p.first_name} {p.last_name}
+                                    </span>
+                                    {p.pair_group && <SiblingBadge group={p.pair_group} />}
                                   </span>
                                   <AbilityBadge category={p.ability_category} />
                                 </button>
@@ -445,9 +449,12 @@ function AddPlayerDialog({
                         : "bg-bg-elevated border-border"
                     }`}
                   >
-                    <span className="flex items-center gap-2">
+                    <span className="flex items-center gap-1.5 min-w-0">
                       {gk && <GoalkeeperBadge compact />}
-                      {p.first_name} {p.last_name}
+                      <span className="truncate">
+                        {p.first_name} {p.last_name}
+                      </span>
+                      {p.pair_group && <SiblingBadge group={p.pair_group} />}
                     </span>
                     <AbilityBadge category={p.ability_category} />
                   </button>
