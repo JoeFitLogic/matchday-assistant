@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  background-color: #0b0f1a;
+  color: #e5e7eb;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  button,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+  input,
+  select,
+  textarea {
+    font-size: 16px; /* prevents iOS zoom on focus */
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 min-h-tap px-4 rounded-lg font-semibold transition active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
+  }
+  .btn-primary {
+    @apply btn bg-emerald-500 text-slate-950 hover:bg-emerald-400;
+  }
+  .btn-secondary {
+    @apply btn bg-bg-elevated text-slate-100 border border-border hover:bg-slate-800;
+  }
+  .btn-ghost {
+    @apply btn text-slate-300 hover:bg-bg-elevated;
+  }
+  .btn-danger {
+    @apply btn bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20;
+  }
+  .input {
+    @apply w-full min-h-tap bg-bg-surface border border-border rounded-lg px-3 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/60;
+  }
+  .card {
+    @apply bg-bg-surface border border-border rounded-xl p-4;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold;
+  }
+}
