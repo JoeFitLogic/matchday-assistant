@@ -13,12 +13,14 @@ export default function FixturesTab({
   teams,
   matches,
   setMatches,
+  readOnly = false,
 }: {
   clubId: string;
   sessionId: string;
   teams: Team[];
   matches: Match[];
   setMatches: React.Dispatch<React.SetStateAction<Match[]>>;
+  readOnly?: boolean;
 }) {
   const supabase = createClient();
   const [busy, setBusy] = useState<string | null>(null);
@@ -38,6 +40,7 @@ export default function FixturesTab({
   }, [teams, matches]);
 
   async function ensureDefaultFixtures(team: Team) {
+    if (readOnly) return;
     setBusy(team.id);
     const existing = byTeam.get(team.id) ?? [];
     const existingNumbers = new Set(existing.map((m) => m.match_number));
@@ -62,16 +65,19 @@ export default function FixturesTab({
   }
 
   async function updateMatch(match: Match, patch: Partial<Match>) {
+    if (readOnly) return;
     setMatches((list) => list.map((m) => (m.id === match.id ? { ...m, ...patch } : m)));
     await supabase.from("matches").update(patch).eq("id", match.id);
   }
 
   async function deleteMatch(match: Match) {
+    if (readOnly) return;
     setMatches((list) => list.filter((m) => m.id !== match.id));
     await supabase.from("matches").delete().eq("id", match.id);
   }
 
   async function addMatch(team: Team) {
+    if (readOnly) return;
     const existing = byTeam.get(team.id) ?? [];
     const nextNum = (existing.at(-1)?.match_number ?? 0) + 1;
     const { data } = await supabase
@@ -100,7 +106,7 @@ export default function FixturesTab({
                 style={{ backgroundColor: team.team_colour ?? "#64748b" }}
               />
               <div className="font-bold flex-1 truncate">{team.team_name}</div>
-              {teamMatches.length === 0 && (
+              {!readOnly && teamMatches.length === 0 && (
                 <button
                   onClick={() => ensureDefaultFixtures(team)}
                   disabled={busy === team.id}
@@ -120,14 +126,16 @@ export default function FixturesTab({
                       {m.match_number}
                     </div>
                     <input
+                      disabled={readOnly}
                       placeholder="Opponent"
                       value={m.opponent_name ?? ""}
                       onChange={(e) =>
                         updateMatch(m, { opponent_name: e.target.value || null })
                       }
-                      className="input h-10 min-h-0 text-sm flex-1"
+                      className="input h-10 min-h-0 text-sm flex-1 disabled:opacity-100"
                     />
                     <input
+                      disabled={readOnly}
                       type="number"
                       placeholder="Pitch"
                       min={1}
@@ -137,25 +145,29 @@ export default function FixturesTab({
                           pitch_number: e.target.value ? Number(e.target.value) : null,
                         })
                       }
-                      className="input h-10 min-h-0 text-sm w-16 text-center"
+                      className="input h-10 min-h-0 text-sm w-16 text-center disabled:opacity-100"
                     />
-                    <button
-                      onClick={() => deleteMatch(m)}
-                      className="btn-ghost w-tap h-tap p-0 text-slate-500"
-                      aria-label="Delete fixture"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {!readOnly && (
+                      <button
+                        onClick={() => deleteMatch(m)}
+                        className="btn-ghost w-tap h-tap p-0 text-slate-500"
+                        aria-label="Delete fixture"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </li>
                 ))}
-                <li>
-                  <button
-                    onClick={() => addMatch(team)}
-                    className="btn-ghost w-full h-9 min-h-0 text-sm"
-                  >
-                    <Plus className="w-4 h-4" /> Add another game
-                  </button>
-                </li>
+                {!readOnly && (
+                  <li>
+                    <button
+                      onClick={() => addMatch(team)}
+                      className="btn-ghost w-full h-9 min-h-0 text-sm"
+                    >
+                      <Plus className="w-4 h-4" /> Add another game
+                    </button>
+                  </li>
+                )}
               </ul>
             )}
           </div>

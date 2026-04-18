@@ -10,17 +10,16 @@ function scoreOf(p: Player): number {
   return ABILITY_SCORE[p.ability_category ?? "Intermediate"];
 }
 
+export function isGoalkeeper(p: Player): boolean {
+  return (p.preferred_position ?? "").toUpperCase() === "GK";
+}
+
 type Unit = {
   players: Player[];
   totalScore: number;
-  separations: Set<string>; // separation_group values on this unit
+  separations: Set<string>;
 };
 
-/**
- * Group players by pair_group (pairs must go together). Each unit is 1+ players.
- * Separation groups are kept as a hint — we try to avoid two units with the same
- * separation_group landing on the same team.
- */
 function buildUnits(players: Player[]): Unit[] {
   const grouped = new Map<string, Player[]>();
   const units: Unit[] = [];
@@ -62,24 +61,55 @@ function hasSeparationConflict(team: Unit[], unit: Unit): boolean {
 export type BalancedTeam = { players: Player[]; totalScore: number };
 
 /**
- * Ability-balanced team generator.
+ * Ability-balanced team generator with goalkeeper-first distribution.
  *
  * Algorithm:
- *   1. Group into units (pair_group members stay glued together).
- *   2. Sort units by score desc (largest impact first).
- *   3. Greedy assign each unit to the team that (a) doesn't break separation groups
- *      and (b) has the lowest running score. Ties broken by fewest players.
+ *   1. Split goalkeepers from outfield players.
+ *   2. Sort goalkeepers by ability (strongest first) and distribute one to
+ *      each team in order. Any extra GKs go back into the outfield pool so
+ *      they still get a game.
+ *   3. For the remaining outfield players, group by pair_group (units glued
+ *      together), sort by ability score descending, then greedy-assign each
+ *      unit to the team with the lowest running total — skipping teams that
+ *      would break a separation_group constraint.
  *
- * Good enough for squads up to ~30 with 2–5 teams. Not optimal but fast and
- * deterministic, and the coach always gets two-tap manual swap.
+ * This keeps teams balanced by:
+ *   - Guaranteeing a keeper in every team (when enough keepers exist)
+ *   - Spreading Advanced/Intermediate/Developing evenly via the score sum
+ *   - Respecting pair_group (friends stay together) and
+ *     separation_group (certain kids kept apart)
  */
 export function balanceTeams(players: Player[], numTeams: number): BalancedTeam[] {
   if (numTeams <= 0) return [];
+
   const teams: Unit[][] = Array.from({ length: numTeams }, () => []);
   const teamScores = new Array(numTeams).fill(0);
   const teamSizes = new Array(numTeams).fill(0);
 
-  const units = buildUnits(players).sort((a, b) => b.totalScore - a.totalScore);
+  // 1. Goalkeepers: one per team, strongest first.
+  const gks = players.filter(isGoalkeeper).sort((a, b) => scoreOf(b) - scoreOf(a));
+  const outfieldStart = players.filter((p) => !isGoalkeeper(p));
+
+  const extraGks: Player[] = [];
+  gks.forEach((gk, idx) => {
+    if (idx < numTeams) {
+      const unit: Unit = {
+        players: [gk],
+        totalScore: scoreOf(gk),
+        separations: new Set(gk.separation_group ? [gk.separation_group] : []),
+      };
+      teams[idx].push(unit);
+      teamScores[idx] += unit.totalScore;
+      teamSizes[idx] += 1;
+    } else {
+      extraGks.push(gk);
+    }
+  });
+
+  // 2. Outfield units (plus any surplus keepers), greedy balance.
+  const units = buildUnits([...outfieldStart, ...extraGks]).sort(
+    (a, b) => b.totalScore - a.totalScore
+  );
 
   for (const unit of units) {
     let best = -1;
@@ -90,10 +120,10 @@ export function balanceTeams(players: Player[], numTeams: number): BalancedTeam[
         continue;
       }
       if (teamScores[i] < teamScores[best]) best = i;
-      else if (teamScores[i] === teamScores[best] && teamSizes[i] < teamSizes[best]) best = i;
+      else if (teamScores[i] === teamScores[best] && teamSizes[i] < teamSizes[best])
+        best = i;
     }
     if (best === -1) {
-      // All teams conflict on separation — fall back to lowest score.
       best = teamScores.indexOf(Math.min(...teamScores));
     }
     teams[best].push(unit);

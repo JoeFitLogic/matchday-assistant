@@ -1,10 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Shuffle, UserPlus, X } from "lucide-react";
+import { Shuffle, UserPlus, X, AlertTriangle } from "lucide-react";
 import AbilityBadge from "@/components/ui/AbilityBadge";
+import GoalkeeperBadge from "@/components/ui/GoalkeeperBadge";
 import { createClient } from "@/lib/supabase/client";
-import { balanceTeams } from "@/lib/engines/teamBalancer";
+import { balanceTeams, isGoalkeeper } from "@/lib/engines/teamBalancer";
 import type { Attendance, Player, Team, TeamPlayer } from "@/lib/types/database";
 
 type Props = {
@@ -17,6 +18,7 @@ type Props = {
   teamPlayers: TeamPlayer[];
   setTeams: React.Dispatch<React.SetStateAction<Team[]>>;
   setTeamPlayers: React.Dispatch<React.SetStateAction<TeamPlayer[]>>;
+  readOnly?: boolean;
 };
 
 type SelectedSlot = { teamId: string; playerId: string };
@@ -30,6 +32,7 @@ export default function TeamsTab({
   teamPlayers,
   setTeams,
   setTeamPlayers,
+  readOnly = false,
 }: Props) {
   const supabase = createClient();
   const [selected, setSelected] = useState<SelectedSlot | null>(null);
@@ -65,6 +68,7 @@ export default function TeamsTab({
   }, [availablePlayers, teamPlayers]);
 
   async function autoGenerate() {
+    if (readOnly) return;
     if (availablePlayers.length === 0) {
       alert("Mark some players available first.");
       return;
@@ -141,6 +145,7 @@ export default function TeamsTab({
   }
 
   function onSlotTap(slot: SelectedSlot) {
+    if (readOnly) return;
     if (!selected) {
       setSelected(slot);
       return;
@@ -157,6 +162,7 @@ export default function TeamsTab({
   }
 
   async function updateTeam(teamId: string, patch: Partial<Team>) {
+    if (readOnly) return;
     setTeams((list) => list.map((t) => (t.id === teamId ? { ...t, ...patch } : t)));
     await supabase.from("teams").update(patch).eq("id", teamId);
   }
@@ -169,18 +175,32 @@ export default function TeamsTab({
     );
   }
 
+  const totalGks = availablePlayers.filter(isGoalkeeper).length;
+
   return (
     <>
-      <div className="flex gap-2 mb-4">
-        <button
-          onClick={autoGenerate}
-          disabled={busy || availablePlayers.length === 0}
-          className="btn-primary flex-1"
-        >
-          <Shuffle className="w-5 h-5" />
-          {busy ? "Balancing…" : "Auto-generate"}
-        </button>
-      </div>
+      {!readOnly && (
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={autoGenerate}
+            disabled={busy || availablePlayers.length === 0}
+            className="btn-primary flex-1"
+          >
+            <Shuffle className="w-5 h-5" />
+            {busy ? "Balancing…" : "Auto-generate"}
+          </button>
+        </div>
+      )}
+      {!readOnly && totalGks > 0 && totalGks < teams.length && (
+        <div className="card mb-4 border-amber-500/40 bg-amber-500/5 flex items-start gap-2 text-xs text-amber-200">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          <div>
+            Only {totalGks} goalkeeper{totalGks === 1 ? "" : "s"} available for{" "}
+            {teams.length} teams. Some teams will need an outfield player to go in
+            goal.
+          </div>
+        </div>
+      )}
 
       {selected && (
         <div className="sticky top-[116px] z-10 mb-3 card border-emerald-500/40 bg-emerald-500/10">
@@ -221,6 +241,12 @@ export default function TeamsTab({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {teams.map((team) => {
           const teamPlayersList = byTeam.get(team.id) ?? [];
+          const hasGk = teamPlayersList.some(isGoalkeeper);
+          const counts = {
+            Advanced: teamPlayersList.filter((p) => p.ability_category === "Advanced").length,
+            Intermediate: teamPlayersList.filter((p) => p.ability_category === "Intermediate").length,
+            Developing: teamPlayersList.filter((p) => p.ability_category === "Developing").length,
+          };
           return (
             <div key={team.id} className="card">
               <div className="flex items-center gap-3 mb-3">
@@ -229,7 +255,8 @@ export default function TeamsTab({
                   style={{ backgroundColor: team.team_colour ?? "#64748b" }}
                 />
                 <input
-                  className="bg-transparent border-b border-transparent focus:border-border-strong focus:outline-none font-bold text-base flex-1 min-w-0"
+                  disabled={readOnly}
+                  className="bg-transparent border-b border-transparent focus:border-border-strong focus:outline-none font-bold text-base flex-1 min-w-0 disabled:opacity-100 disabled:cursor-default"
                   value={team.team_name}
                   onChange={(e) => updateTeam(team.id, { team_name: e.target.value })}
                 />
@@ -238,11 +265,25 @@ export default function TeamsTab({
                 </span>
               </div>
               <input
-                className="input h-9 min-h-0 text-sm mb-3"
+                disabled={readOnly}
+                className="input h-9 min-h-0 text-sm mb-2 disabled:opacity-100"
                 placeholder="Coach name"
                 value={team.coach_name ?? ""}
                 onChange={(e) => updateTeam(team.id, { coach_name: e.target.value })}
               />
+              <div className="flex items-center gap-2 text-[11px] text-slate-400 mb-3">
+                <span>Adv {counts.Advanced}</span>
+                <span>·</span>
+                <span>Int {counts.Intermediate}</span>
+                <span>·</span>
+                <span>Dev {counts.Developing}</span>
+              </div>
+              {teamPlayersList.length > 0 && !hasGk && (
+                <div className="mb-2 flex items-center gap-2 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-lg px-2.5 py-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  No goalkeeper assigned
+                </div>
+              )}
               {teamPlayersList.length === 0 ? (
                 <div className="text-xs text-slate-500 text-center py-3">
                   No players assigned yet.
@@ -252,19 +293,24 @@ export default function TeamsTab({
                   {teamPlayersList.map((p) => {
                     const isSelected =
                       selected?.teamId === team.id && selected?.playerId === p.id;
+                    const gk = isGoalkeeper(p);
                     return (
                       <li key={p.id}>
                         <button
+                          disabled={readOnly}
                           onClick={() =>
                             onSlotTap({ teamId: team.id, playerId: p.id })
                           }
-                          className={`w-full min-h-tap flex items-center justify-between gap-2 rounded-lg px-3 border text-left ${
+                          className={`w-full min-h-tap flex items-center justify-between gap-2 rounded-lg px-3 border text-left disabled:cursor-default ${
                             isSelected
                               ? "bg-emerald-500/20 border-emerald-500/40"
+                              : gk
+                              ? "bg-sky-500/10 border-sky-500/30 hover:border-sky-500/50"
                               : "bg-bg-elevated border-border hover:border-border-strong"
                           }`}
                         >
-                          <span className="truncate text-sm font-medium">
+                          <span className="truncate text-sm font-medium flex items-center gap-2">
+                            {gk && <GoalkeeperBadge compact />}
                             {p.first_name} {p.last_name}
                           </span>
                           <AbilityBadge category={p.ability_category} />
@@ -274,12 +320,14 @@ export default function TeamsTab({
                   })}
                 </ul>
               )}
-              <button
-                onClick={() => setAdding({ teamId: team.id })}
-                className="btn-ghost w-full mt-2 h-9 min-h-0 text-sm"
-              >
-                <UserPlus className="w-4 h-4" /> Add player
-              </button>
+              {!readOnly && (
+                <button
+                  onClick={() => setAdding({ teamId: team.id })}
+                  className="btn-ghost w-full mt-2 h-9 min-h-0 text-sm"
+                >
+                  <UserPlus className="w-4 h-4" /> Add player
+                </button>
+              )}
             </div>
           );
         })}
@@ -322,19 +370,27 @@ function AddPlayerDialog({
           </p>
         ) : (
           <ul className="space-y-1.5">
-            {availablePlayers.map((p) => (
-              <li key={p.id}>
-                <button
-                  onClick={() => onPick(p)}
-                  className="w-full min-h-tap flex items-center justify-between gap-2 rounded-lg px-3 bg-bg-elevated border border-border hover:border-border-strong text-left"
-                >
-                  <span>
-                    {p.first_name} {p.last_name}
-                  </span>
-                  <AbilityBadge category={p.ability_category} />
-                </button>
-              </li>
-            ))}
+            {availablePlayers.map((p) => {
+              const gk = isGoalkeeper(p);
+              return (
+                <li key={p.id}>
+                  <button
+                    onClick={() => onPick(p)}
+                    className={`w-full min-h-tap flex items-center justify-between gap-2 rounded-lg px-3 border text-left hover:border-border-strong ${
+                      gk
+                        ? "bg-sky-500/10 border-sky-500/30"
+                        : "bg-bg-elevated border-border"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      {gk && <GoalkeeperBadge compact />}
+                      {p.first_name} {p.last_name}
+                    </span>
+                    <AbilityBadge category={p.ability_category} />
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

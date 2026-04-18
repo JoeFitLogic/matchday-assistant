@@ -25,7 +25,9 @@ export default function PlayerFormDialog({
     player?.ability_category ?? "Intermediate"
   );
   const [dob, setDob] = useState(player?.date_of_birth ?? "");
-  const [position, setPosition] = useState(player?.preferred_position ?? "");
+  const [isGoalkeeper, setIsGoalkeeper] = useState(
+    (player?.preferred_position ?? "").toUpperCase() === "GK"
+  );
   const [pairGroup, setPairGroup] = useState(player?.pair_group ?? "");
   const [separationGroup, setSeparationGroup] = useState(player?.separation_group ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +44,7 @@ export default function PlayerFormDialog({
       last_name: lastName.trim(),
       ability_category: ability,
       date_of_birth: dob || null,
-      preferred_position: position.trim() || null,
+      preferred_position: isGoalkeeper ? "GK" : null,
       pair_group: pairGroup.trim() || null,
       separation_group: separationGroup.trim() || null,
       is_active: player?.is_active ?? true,
@@ -132,26 +134,29 @@ export default function PlayerFormDialog({
               ))}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Date of birth</label>
-              <input
-                type="date"
-                value={dob ?? ""}
-                onChange={(e) => setDob(e.target.value)}
-                className="input"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Position</label>
-              <input
-                value={position ?? ""}
-                onChange={(e) => setPosition(e.target.value)}
-                placeholder="e.g. ST, GK"
-                className="input"
-              />
-            </div>
+          <div>
+            <label className="block text-xs text-slate-400 mb-1">Date of birth</label>
+            <input
+              type="date"
+              value={dob ?? ""}
+              onChange={(e) => setDob(e.target.value)}
+              className="input"
+            />
           </div>
+          <label className="flex items-center gap-3 min-h-tap px-3 rounded-lg border border-border bg-bg-elevated cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isGoalkeeper}
+              onChange={(e) => setIsGoalkeeper(e.target.checked)}
+              className="w-5 h-5 accent-emerald-500"
+            />
+            <div className="flex-1">
+              <div className="text-sm font-semibold">Goalkeeper</div>
+              <div className="text-xs text-slate-400">
+                Balancer will place one GK in each team.
+              </div>
+            </div>
+          </label>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-slate-400 mb-1">Pair group</label>

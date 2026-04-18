@@ -11,17 +11,20 @@ export default function AvailabilityTab({
   players,
   attendance,
   setAttendance,
+  readOnly = false,
 }: {
   clubId: string;
   sessionId: string;
   players: Player[];
   attendance: Attendance[];
   setAttendance: React.Dispatch<React.SetStateAction<Attendance[]>>;
+  readOnly?: boolean;
 }) {
   const supabase = createClient();
   const indexByPlayer = new Map(attendance.map((a) => [a.player_id, a]));
 
   async function setStatus(player: Player, status: "present" | "absent") {
+    if (readOnly) return;
     const existing = indexByPlayer.get(player.id);
 
     if (existing) {
@@ -70,14 +73,16 @@ export default function AvailabilityTab({
 
   return (
     <>
-      <div className="flex gap-2 mb-3">
-        <button onClick={() => setAll("present")} className="btn-secondary h-9 min-h-0 px-3 text-sm flex-1">
-          Mark all available
-        </button>
-        <button onClick={() => setAll("absent")} className="btn-ghost h-9 min-h-0 px-3 text-sm flex-1">
-          Clear all
-        </button>
-      </div>
+      {!readOnly && (
+        <div className="flex gap-2 mb-3">
+          <button onClick={() => setAll("present")} className="btn-secondary h-9 min-h-0 px-3 text-sm flex-1">
+            Mark all available
+          </button>
+          <button onClick={() => setAll("absent")} className="btn-ghost h-9 min-h-0 px-3 text-sm flex-1">
+            Clear all
+          </button>
+        </div>
+      )}
       <ul className="space-y-2">
         {players.map((p) => {
           const a = indexByPlayer.get(p.id);
@@ -106,8 +111,9 @@ export default function AvailabilityTab({
               <div className="flex gap-1">
                 <button
                   aria-label="Absent"
+                  disabled={readOnly}
                   onClick={() => setStatus(p, "absent")}
-                  className={`w-tap h-tap rounded-lg flex items-center justify-center border ${
+                  className={`w-tap h-tap rounded-lg flex items-center justify-center border disabled:cursor-default ${
                     a?.status === "absent"
                       ? "bg-red-500/20 border-red-500/40 text-red-300"
                       : "bg-bg-elevated border-border text-slate-500"
@@ -117,8 +123,9 @@ export default function AvailabilityTab({
                 </button>
                 <button
                   aria-label="Available"
+                  disabled={readOnly}
                   onClick={() => setStatus(p, "present")}
-                  className={`w-tap h-tap rounded-lg flex items-center justify-center border ${
+                  className={`w-tap h-tap rounded-lg flex items-center justify-center border disabled:cursor-default ${
                     present
                       ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300"
                       : "bg-bg-elevated border-border text-slate-500"

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Plus, UserPlus } from "lucide-react";
 import AbilityBadge from "@/components/ui/AbilityBadge";
+import GoalkeeperBadge from "@/components/ui/GoalkeeperBadge";
 import PlayerFormDialog from "./PlayerFormDialog";
 import { createClient } from "@/lib/supabase/client";
 import type { Player } from "@/lib/types/database";
@@ -98,7 +99,9 @@ export default function PlayersView({
                   </div>
                   <div className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
                     <AbilityBadge category={p.ability_category} />
-                    {p.preferred_position && <span>{p.preferred_position}</span>}
+                    {(p.preferred_position ?? "").toUpperCase() === "GK" && (
+                      <GoalkeeperBadge compact />
+                    )}
                   </div>
                 </div>
               </button>

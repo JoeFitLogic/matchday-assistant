@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import AvailabilityTab from "./AvailabilityTab";
 import TeamsTab from "./TeamsTab";
 import FixturesTab from "./FixturesTab";
+import SessionReadiness from "./SessionReadiness";
 import type {
   Attendance,
   Match,
@@ -38,6 +39,8 @@ export default function SessionDetail({
   const [teamPlayers, setTeamPlayers] = useState<TeamPlayer[]>(initialTeamPlayers);
   const [attendance, setAttendance] = useState<Attendance[]>(initialAttendance);
   const [matches, setMatches] = useState<Match[]>(initialMatches);
+
+  const readOnly = session.status === "ready" || session.status === "live";
 
   const availableCount = useMemo(
     () => attendance.filter((a) => a.status === "present").length,
@@ -88,6 +91,7 @@ export default function SessionDetail({
           players={players}
           attendance={attendance}
           setAttendance={setAttendance}
+          readOnly={readOnly}
         />
       )}
 
@@ -102,6 +106,7 @@ export default function SessionDetail({
           teamPlayers={teamPlayers}
           setTeams={setTeams}
           setTeamPlayers={setTeamPlayers}
+          readOnly={readOnly}
         />
       )}
 
@@ -112,8 +117,18 @@ export default function SessionDetail({
           teams={teams}
           matches={matches}
           setMatches={setMatches}
+          readOnly={readOnly}
         />
       )}
+
+      <SessionReadiness
+        sessionId={session.id}
+        status={session.status}
+        teams={teams}
+        teamPlayers={teamPlayers}
+        players={players}
+        matches={matches}
+      />
     </>
   );
 }
