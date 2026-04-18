@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Clock } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { SessionFormat } from "@/lib/types/database";
 
@@ -15,10 +16,14 @@ const FORMATS: { value: SessionFormat; label: string; defaultLen: number; defaul
 const TEAM_COLOURS = ["#ef4444", "#3b82f6", "#f59e0b", "#8b5cf6", "#10b981", "#ec4899"];
 
 const DEFAULT_SLOT_LABELS = ["6:00 PM", "7:00 PM", "8:00 PM", "9:00 PM"];
+const MAX_SLOTS = 4;
+const MAX_TEAMS_PER_SLOT = 4;
 
 function defaultLabelFor(slotIndex: number): string {
   return DEFAULT_SLOT_LABELS[slotIndex] ?? `Slot ${slotIndex + 1}`;
 }
+
+type SlotConfig = { label: string; teams: number };
 
 export default function NewSessionForm({
   clubId,
@@ -38,25 +43,27 @@ export default function NewSessionForm({
   const [format, setFormat] = useState<SessionFormat>("5v5");
   const [matchLen, setMatchLen] = useState(10);
   const [subInterval, setSubInterval] = useState(3);
-  const [numSlots, setNumSlots] = useState(2);
-  const [teamsPerSlot, setTeamsPerSlot] = useState(2);
-  const [slotLabels, setSlotLabels] = useState<string[]>(
-    DEFAULT_SLOT_LABELS.slice(0, 2)
-  );
+  const [slots, setSlots] = useState<SlotConfig[]>([
+    { label: "6:00 PM", teams: 2 },
+    { label: "7:00 PM", teams: 2 },
+  ]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Keep slotLabels array length in sync with numSlots
-  useEffect(() => {
-    setSlotLabels((prev) => {
+  function setNumSlots(n: number) {
+    setSlots((prev) => {
       const next = [...prev];
-      while (next.length < numSlots) next.push(defaultLabelFor(next.length));
-      next.length = numSlots;
+      while (next.length < n) next.push({ label: defaultLabelFor(next.length), teams: 2 });
+      next.length = n;
       return next;
     });
-  }, [numSlots]);
+  }
 
-  const totalTeams = numSlots * teamsPerSlot;
+  function updateSlot(i: number, patch: Partial<SlotConfig>) {
+    setSlots((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
+  }
+
+  const totalTeams = slots.reduce((n, s) => n + s.teams, 0);
 
   function pickFormat(f: SessionFormat) {
     setFormat(f);
@@ -74,7 +81,7 @@ export default function NewSessionForm({
       return;
     }
     if (totalTeams === 0) {
-      setError("Need at least 1 team.");
+      setError("Need at least 1 team across all slots.");
       return;
     }
 
@@ -102,7 +109,7 @@ export default function NewSessionForm({
       return;
     }
 
-    // Build team rows: each slot gets teamsPerSlot teams, numbered sequentially.
+    // Build team rows from the per-slot config.
     const teamRows: {
       club_id: string;
       session_id: string;
@@ -112,19 +119,19 @@ export default function NewSessionForm({
       slot_label: string;
     }[] = [];
     let teamIdx = 0;
-    for (let slot = 0; slot < numSlots; slot++) {
-      for (let inSlot = 0; inSlot < teamsPerSlot; inSlot++) {
+    slots.forEach((slot, slotIdx) => {
+      for (let inSlot = 0; inSlot < slot.teams; inSlot++) {
         teamRows.push({
           club_id: clubId,
           session_id: session.id,
           team_name: `${clubName} ${teamIdx + 1}`,
           team_colour: TEAM_COLOURS[teamIdx % TEAM_COLOURS.length],
-          slot_number: slot + 1,
-          slot_label: slotLabels[slot] || defaultLabelFor(slot),
+          slot_number: slotIdx + 1,
+          slot_label: slot.label || defaultLabelFor(slotIdx),
         });
         teamIdx++;
       }
-    }
+    });
 
     const { error: tErr } = await supabase.from("teams").insert(teamRows);
     if (tErr) {
@@ -183,13 +190,13 @@ export default function NewSessionForm({
         <div>
           <label className="block text-sm text-slate-300 mb-1.5">Time slots</label>
           <div className="grid grid-cols-4 gap-2">
-            {[1, 2, 3, 4].map((n) => (
+            {Array.from({ length: MAX_SLOTS }, (_, i) => i + 1).map((n) => (
               <button
                 type="button"
                 key={n}
                 onClick={() => setNumSlots(n)}
                 className={`min-h-tap rounded-lg border font-bold ${
-                  numSlots === n
+                  slots.length === n
                     ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
                     : "bg-bg-elevated border-border text-slate-300"
                 }`}
@@ -198,62 +205,51 @@ export default function NewSessionForm({
               </button>
             ))}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">
-            e.g. 2 slots for 6pm + 7pm kick-offs
-          </p>
         </div>
 
-        <div>
-          <label className="block text-sm text-slate-300 mb-1.5">Teams per slot</label>
-          <div className="grid grid-cols-4 gap-2">
-            {[1, 2, 3, 4].map((n) => (
-              <button
-                type="button"
-                key={n}
-                onClick={() => setTeamsPerSlot(n)}
-                className={`min-h-tap rounded-lg border font-bold ${
-                  teamsPerSlot === n
-                    ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
-                    : "bg-bg-elevated border-border text-slate-300"
-                }`}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
+        <div className="space-y-3">
+          {slots.map((slot, i) => (
+            <div key={i} className="card space-y-2">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-slate-500 shrink-0" />
+                <input
+                  value={slot.label}
+                  onChange={(e) => updateSlot(i, { label: e.target.value })}
+                  placeholder={defaultLabelFor(i)}
+                  className="input h-10 min-h-0 text-sm font-semibold"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">
+                  Teams in this slot
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {Array.from({ length: MAX_TEAMS_PER_SLOT }, (_, n) => n + 1).map((n) => (
+                    <button
+                      type="button"
+                      key={n}
+                      onClick={() => updateSlot(i, { teams: n })}
+                      className={`min-h-tap rounded-lg border font-bold text-sm ${
+                        slot.teams === n
+                          ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
+                          : "bg-bg-elevated border-border text-slate-300"
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
 
         <div className="text-xs text-slate-400 bg-bg-elevated border border-border rounded-lg px-3 py-2">
           Total: <span className="text-slate-100 font-semibold">{totalTeams}</span>{" "}
           team{totalTeams === 1 ? "" : "s"} across{" "}
-          <span className="text-slate-100 font-semibold">{numSlots}</span> slot
-          {numSlots === 1 ? "" : "s"}
+          <span className="text-slate-100 font-semibold">{slots.length}</span> slot
+          {slots.length === 1 ? "" : "s"}
         </div>
-
-        {numSlots > 1 && (
-          <div>
-            <label className="block text-sm text-slate-300 mb-1.5">Slot labels</label>
-            <div className="space-y-2">
-              {Array.from({ length: numSlots }).map((_, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="chip border bg-bg-elevated border-border text-slate-400 shrink-0">
-                    {i + 1}
-                  </span>
-                  <input
-                    value={slotLabels[i] ?? ""}
-                    onChange={(e) => {
-                      const next = [...slotLabels];
-                      next[i] = e.target.value;
-                      setSlotLabels(next);
-                    }}
-                    placeholder={defaultLabelFor(i)}
-                    className="input h-10 min-h-0 text-sm"
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3">
