@@ -41,6 +41,30 @@ Coach can:
 
 See [CLAUDE.md](.claude/CLAUDE.md) for full architecture notes and [PHASE1_PROMPT.md](PHASE1_PROMPT.md) for the delivery spec.
 
+## Database setup (one-time)
+
+Before the app can do anything you need a club, an active season, an auth user,
+and RLS policies. Two SQL files do the lot:
+
+1. **Create an auth user** — Supabase Dashboard → Authentication → Users → Add
+   user → tick "Auto Confirm User". Copy the UUID.
+2. **Open [`supabase/seed.sql`](supabase/seed.sql)** — replace
+   `PASTE_YOUR_USER_UUID_HERE` with that UUID — paste the whole file into
+   Supabase SQL Editor and run.
+3. **Open [`supabase/policies.sql`](supabase/policies.sql)** — paste and run.
+   This enables RLS and adds "same-club" policies across every Phase 1 table.
+
+## Deploying to Vercel
+
+1. https://vercel.com/new → import `JoeFitLogic/matchday-assistant`
+2. **Root Directory:** `matchday-assistant`
+3. **Environment variables** (Production + Preview + Development):
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+4. Deploy.
+5. In Supabase → Authentication → URL Configuration, set **Site URL** to the
+   Vercel URL and add it to **Redirect URLs**.
+
 ## Regenerating Supabase types
 
 ```bash
