@@ -12,6 +12,7 @@ export default function FixturesTab({
   sessionId,
   teams,
   matches,
+  matchLengthMinutes,
   setMatches,
   readOnly = false,
 }: {
@@ -19,11 +20,13 @@ export default function FixturesTab({
   sessionId: string;
   teams: Team[];
   matches: Match[];
+  matchLengthMinutes: number;
   setMatches: React.Dispatch<React.SetStateAction<Match[]>>;
   readOnly?: boolean;
 }) {
   const supabase = createClient();
   const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const byTeam = useMemo(() => {
     const map = new Map<string, Match[]>();
@@ -41,6 +44,7 @@ export default function FixturesTab({
 
   async function ensureDefaultFixtures(team: Team) {
     if (readOnly) return;
+    setError(null);
     setBusy(team.id);
     const existing = byTeam.get(team.id) ?? [];
     const existingNumbers = new Set(existing.map((m) => m.match_number));
@@ -52,6 +56,7 @@ export default function FixturesTab({
         club_id: clubId,
         home_team_id: team.id,
         match_number: n,
+        duration_minutes: matchLengthMinutes,
         status: "scheduled" as const,
       });
     }
@@ -59,43 +64,71 @@ export default function FixturesTab({
       setBusy(null);
       return;
     }
-    const { data } = await supabase.from("matches").insert(rows).select("*");
-    if (data) setMatches((list) => [...list, ...(data as Match[])]);
+    const { data, error } = await supabase
+      .from("matches")
+      .insert(rows)
+      .select("*");
+    if (error) {
+      console.error("Could not add fixtures:", error);
+      setError(`Could not add fixtures: ${error.message}`);
+    } else if (data) {
+      setMatches((list) => [...list, ...(data as Match[])]);
+    }
     setBusy(null);
   }
 
   async function updateMatch(match: Match, patch: Partial<Match>) {
     if (readOnly) return;
     setMatches((list) => list.map((m) => (m.id === match.id ? { ...m, ...patch } : m)));
-    await supabase.from("matches").update(patch).eq("id", match.id);
+    const { error } = await supabase.from("matches").update(patch).eq("id", match.id);
+    if (error) {
+      console.error("Could not update fixture:", error);
+      setError(`Could not save: ${error.message}`);
+    }
   }
 
   async function deleteMatch(match: Match) {
     if (readOnly) return;
     setMatches((list) => list.filter((m) => m.id !== match.id));
-    await supabase.from("matches").delete().eq("id", match.id);
+    const { error } = await supabase.from("matches").delete().eq("id", match.id);
+    if (error) {
+      console.error("Could not delete fixture:", error);
+      setError(`Could not delete: ${error.message}`);
+    }
   }
 
   async function addMatch(team: Team) {
     if (readOnly) return;
+    setError(null);
     const existing = byTeam.get(team.id) ?? [];
     const nextNum = (existing.at(-1)?.match_number ?? 0) + 1;
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("matches")
       .insert({
         session_id: sessionId,
         club_id: clubId,
         home_team_id: team.id,
         match_number: nextNum,
+        duration_minutes: matchLengthMinutes,
         status: "scheduled",
       })
       .select("*")
       .single();
-    if (data) setMatches((list) => [...list, data as Match]);
+    if (error) {
+      console.error("Could not add fixture:", error);
+      setError(`Could not add fixture: ${error.message}`);
+    } else if (data) {
+      setMatches((list) => [...list, data as Match]);
+    }
   }
 
   return (
     <div className="space-y-4">
+      {error && (
+        <div className="card border-red-500/40 bg-red-500/10 text-sm text-red-300">
+          {error}
+        </div>
+      )}
       {teams.map((team) => {
         const teamMatches = byTeam.get(team.id) ?? [];
         return (

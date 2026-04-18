@@ -116,6 +116,7 @@ export default function SessionDetail({
           sessionId={session.id}
           teams={teams}
           matches={matches}
+          matchLengthMinutes={session.match_length_minutes}
           setMatches={setMatches}
           readOnly={readOnly}
         />
