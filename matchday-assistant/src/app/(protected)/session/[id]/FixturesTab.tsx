@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Clock } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Match, Team } from "@/lib/types/database";
 
@@ -129,10 +129,27 @@ export default function FixturesTab({
           {error}
         </div>
       )}
-      {teams.map((team) => {
-        const teamMatches = byTeam.get(team.id) ?? [];
-        return (
-          <div key={team.id} className="card">
+      {(() => {
+        const slotMap = new Map<number, Team[]>();
+        for (const t of teams) {
+          const s = t.slot_number ?? 1;
+          if (!slotMap.has(s)) slotMap.set(s, []);
+          slotMap.get(s)!.push(t);
+        }
+        const slotEntries = Array.from(slotMap.entries()).sort(([a], [b]) => a - b);
+        const showHeaders = slotEntries.length > 1;
+        return slotEntries.map(([slotNumber, slotTeams]) => (
+          <section key={slotNumber} className="space-y-3">
+            {showHeaders && (
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-300">
+                <Clock className="w-4 h-4 text-slate-500" />
+                {slotTeams[0]?.slot_label ?? `Slot ${slotNumber}`}
+              </div>
+            )}
+            {slotTeams.map((team) => {
+              const teamMatches = byTeam.get(team.id) ?? [];
+              return (
+                <div key={team.id} className="card">
             <div className="flex items-center gap-3 mb-3">
               <span
                 className="w-3 h-3 rounded-full shrink-0"
@@ -203,9 +220,12 @@ export default function FixturesTab({
                 )}
               </ul>
             )}
-          </div>
-        );
-      })}
+                </div>
+              );
+            })}
+          </section>
+        ));
+      })()}
     </div>
   );
 }

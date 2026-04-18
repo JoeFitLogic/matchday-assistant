@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Shuffle, UserPlus, X, AlertTriangle } from "lucide-react";
+import { Shuffle, UserPlus, X, AlertTriangle, Clock } from "lucide-react";
 import AbilityBadge from "@/components/ui/AbilityBadge";
 import GoalkeeperBadge from "@/components/ui/GoalkeeperBadge";
 import { createClient } from "@/lib/supabase/client";
@@ -80,20 +80,19 @@ export default function TeamsTab({
       return;
     }
     setBusy(true);
-    const balanced = balanceTeams(availablePlayers, teams.length);
+    const balanced = balanceTeams(availablePlayers, teams);
 
     await supabase.from("team_players").delete().in(
       "team_id",
       teams.map((t) => t.id)
     );
 
-    const rows = balanced.flatMap((b, i) =>
-      b.players.map((p) => ({
-        team_id: teams[i].id,
-        player_id: p.id,
-        club_id: clubId,
-      }))
-    );
+    const rows: { team_id: string; player_id: string; club_id: string }[] = [];
+    balanced.forEach((teamPlayersList, teamId) => {
+      for (const p of teamPlayersList) {
+        rows.push({ team_id: teamId, player_id: p.id, club_id: clubId });
+      }
+    });
     const { data } = await supabase.from("team_players").insert(rows).select("*");
     setTeamPlayers((data ?? []) as TeamPlayer[]);
     setBusy(false);
@@ -238,100 +237,152 @@ export default function TeamsTab({
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {teams.map((team) => {
-          const teamPlayersList = byTeam.get(team.id) ?? [];
-          const hasGk = teamPlayersList.some(isGoalkeeper);
-          const counts = {
-            Advanced: teamPlayersList.filter((p) => p.ability_category === "Advanced").length,
-            Intermediate: teamPlayersList.filter((p) => p.ability_category === "Intermediate").length,
-            Developing: teamPlayersList.filter((p) => p.ability_category === "Developing").length,
-          };
-          return (
-            <div key={team.id} className="card">
-              <div className="flex items-center gap-3 mb-3">
-                <span
-                  className="w-3 h-3 rounded-full shrink-0"
-                  style={{ backgroundColor: team.team_colour ?? "#64748b" }}
-                />
-                <input
-                  disabled={readOnly}
-                  className="bg-transparent border-b border-transparent focus:border-border-strong focus:outline-none font-bold text-base flex-1 min-w-0 disabled:opacity-100 disabled:cursor-default"
-                  value={team.team_name}
-                  onChange={(e) => updateTeam(team.id, { team_name: e.target.value })}
-                />
-                <span className="text-xs text-slate-400 shrink-0">
-                  {teamPlayersList.length}
-                </span>
-              </div>
-              <input
-                disabled={readOnly}
-                className="input h-9 min-h-0 text-sm mb-2 disabled:opacity-100"
-                placeholder="Coach name"
-                value={team.coach_name ?? ""}
-                onChange={(e) => updateTeam(team.id, { coach_name: e.target.value })}
-              />
-              <div className="flex items-center gap-2 text-[11px] text-slate-400 mb-3">
-                <span>Adv {counts.Advanced}</span>
-                <span>·</span>
-                <span>Int {counts.Intermediate}</span>
-                <span>·</span>
-                <span>Dev {counts.Developing}</span>
-              </div>
-              {teamPlayersList.length > 0 && !hasGk && (
-                <div className="mb-2 flex items-center gap-2 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-lg px-2.5 py-1.5">
-                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                  No goalkeeper assigned
-                </div>
-              )}
-              {teamPlayersList.length === 0 ? (
-                <div className="text-xs text-slate-500 text-center py-3">
-                  No players assigned yet.
-                </div>
-              ) : (
-                <ul className="space-y-1.5">
-                  {teamPlayersList.map((p) => {
-                    const isSelected =
-                      selected?.teamId === team.id && selected?.playerId === p.id;
-                    const gk = isGoalkeeper(p);
-                    return (
-                      <li key={p.id}>
-                        <button
-                          disabled={readOnly}
-                          onClick={() =>
-                            onSlotTap({ teamId: team.id, playerId: p.id })
-                          }
-                          className={`w-full min-h-tap flex items-center justify-between gap-2 rounded-lg px-3 border text-left disabled:cursor-default ${
-                            isSelected
-                              ? "bg-emerald-500/20 border-emerald-500/40"
-                              : gk
-                              ? "bg-sky-500/10 border-sky-500/30 hover:border-sky-500/50"
-                              : "bg-bg-elevated border-border hover:border-border-strong"
-                          }`}
-                        >
-                          <span className="truncate text-sm font-medium flex items-center gap-2">
-                            {gk && <GoalkeeperBadge compact />}
-                            {p.first_name} {p.last_name}
-                          </span>
-                          <AbilityBadge category={p.ability_category} />
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-              {!readOnly && (
-                <button
-                  onClick={() => setAdding({ teamId: team.id })}
-                  className="btn-ghost w-full mt-2 h-9 min-h-0 text-sm"
-                >
-                  <UserPlus className="w-4 h-4" /> Add player
-                </button>
-              )}
-            </div>
+      {(() => {
+        // Group teams by slot_number, in slot order
+        const slotMap = new Map<number, Team[]>();
+        for (const t of teams) {
+          const s = t.slot_number ?? 1;
+          if (!slotMap.has(s)) slotMap.set(s, []);
+          slotMap.get(s)!.push(t);
+        }
+        const slotEntries = Array.from(slotMap.entries()).sort(([a], [b]) => a - b);
+
+        async function updateSlotLabel(slot: number, label: string) {
+          if (readOnly) return;
+          // Update every team in this slot with the new label
+          setTeams((list) =>
+            list.map((t) =>
+              (t.slot_number ?? 1) === slot ? { ...t, slot_label: label } : t
+            )
           );
-        })}
-      </div>
+          await supabase
+            .from("teams")
+            .update({ slot_label: label })
+            .eq("session_id", sessionId)
+            .eq("slot_number", slot);
+        }
+
+        return slotEntries.map(([slotNumber, slotTeams]) => {
+          const label = slotTeams[0]?.slot_label ?? `Slot ${slotNumber}`;
+          const slotPlayerCount = slotTeams.reduce(
+            (n, t) => n + (byTeam.get(t.id)?.length ?? 0),
+            0
+          );
+          return (
+            <section key={slotNumber} className="mb-5">
+              {slotEntries.length > 1 && (
+                <div className="flex items-center gap-2 mb-2">
+                  <Clock className="w-4 h-4 text-slate-400 shrink-0" />
+                  <input
+                    disabled={readOnly}
+                    className="bg-transparent text-sm font-semibold text-slate-200 border-b border-transparent focus:border-border-strong focus:outline-none flex-1 min-w-0 disabled:opacity-100 disabled:cursor-default"
+                    value={label}
+                    onChange={(e) => updateSlotLabel(slotNumber, e.target.value)}
+                  />
+                  <span className="text-xs text-slate-500 shrink-0">
+                    {slotTeams.length} team{slotTeams.length === 1 ? "" : "s"} ·{" "}
+                    {slotPlayerCount} player{slotPlayerCount === 1 ? "" : "s"}
+                  </span>
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {slotTeams.map((team) => {
+                  const teamPlayersList = byTeam.get(team.id) ?? [];
+                  const hasGk = teamPlayersList.some(isGoalkeeper);
+                  const counts = {
+                    Advanced: teamPlayersList.filter((p) => p.ability_category === "Advanced").length,
+                    Intermediate: teamPlayersList.filter((p) => p.ability_category === "Intermediate").length,
+                    Developing: teamPlayersList.filter((p) => p.ability_category === "Developing").length,
+                  };
+                  return (
+                    <div key={team.id} className="card">
+                      <div className="flex items-center gap-3 mb-3">
+                        <span
+                          className="w-3 h-3 rounded-full shrink-0"
+                          style={{ backgroundColor: team.team_colour ?? "#64748b" }}
+                        />
+                        <input
+                          disabled={readOnly}
+                          className="bg-transparent border-b border-transparent focus:border-border-strong focus:outline-none font-bold text-base flex-1 min-w-0 disabled:opacity-100 disabled:cursor-default"
+                          value={team.team_name}
+                          onChange={(e) => updateTeam(team.id, { team_name: e.target.value })}
+                        />
+                        <span className="text-xs text-slate-400 shrink-0">
+                          {teamPlayersList.length}
+                        </span>
+                      </div>
+                      <input
+                        disabled={readOnly}
+                        className="input h-9 min-h-0 text-sm mb-2 disabled:opacity-100"
+                        placeholder="Coach name"
+                        value={team.coach_name ?? ""}
+                        onChange={(e) => updateTeam(team.id, { coach_name: e.target.value })}
+                      />
+                      <div className="flex items-center gap-2 text-[11px] text-slate-400 mb-3">
+                        <span>Adv {counts.Advanced}</span>
+                        <span>·</span>
+                        <span>Int {counts.Intermediate}</span>
+                        <span>·</span>
+                        <span>Dev {counts.Developing}</span>
+                      </div>
+                      {teamPlayersList.length > 0 && !hasGk && (
+                        <div className="mb-2 flex items-center gap-2 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-lg px-2.5 py-1.5">
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                          No goalkeeper assigned
+                        </div>
+                      )}
+                      {teamPlayersList.length === 0 ? (
+                        <div className="text-xs text-slate-500 text-center py-3">
+                          No players assigned yet.
+                        </div>
+                      ) : (
+                        <ul className="space-y-1.5">
+                          {teamPlayersList.map((p) => {
+                            const isSelected =
+                              selected?.teamId === team.id && selected?.playerId === p.id;
+                            const gk = isGoalkeeper(p);
+                            return (
+                              <li key={p.id}>
+                                <button
+                                  disabled={readOnly}
+                                  onClick={() =>
+                                    onSlotTap({ teamId: team.id, playerId: p.id })
+                                  }
+                                  className={`w-full min-h-tap flex items-center justify-between gap-2 rounded-lg px-3 border text-left disabled:cursor-default ${
+                                    isSelected
+                                      ? "bg-emerald-500/20 border-emerald-500/40"
+                                      : gk
+                                      ? "bg-sky-500/10 border-sky-500/30 hover:border-sky-500/50"
+                                      : "bg-bg-elevated border-border hover:border-border-strong"
+                                  }`}
+                                >
+                                  <span className="truncate text-sm font-medium flex items-center gap-2">
+                                    {gk && <GoalkeeperBadge compact />}
+                                    {p.first_name} {p.last_name}
+                                  </span>
+                                  <AbilityBadge category={p.ability_category} />
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                      {!readOnly && (
+                        <button
+                          onClick={() => setAdding({ teamId: team.id })}
+                          className="btn-ghost w-full mt-2 h-9 min-h-0 text-sm"
+                        >
+                          <UserPlus className="w-4 h-4" /> Add player
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        });
+      })()}
 
       {adding && (
         <AddPlayerDialog

@@ -14,6 +14,12 @@ export function isGoalkeeper(p: Player): boolean {
   return (p.preferred_position ?? "").toUpperCase() === "GK";
 }
 
+/** Minimal team shape the balancer needs. */
+export type BalancerTeam = {
+  id: string;
+  slot_number: number;
+};
+
 type Unit = {
   players: Player[];
   totalScore: number;
@@ -48,91 +54,131 @@ function buildUnits(players: Player[]): Unit[] {
   return units;
 }
 
-function hasSeparationConflict(team: Unit[], unit: Unit): boolean {
-  if (unit.separations.size === 0) return false;
-  for (const t of team) {
-    for (const sep of t.separations) {
-      if (unit.separations.has(sep)) return true;
+/**
+ * Build the order in which teams receive goalkeepers. We cycle across slots
+ * first so that if only N goalkeepers are available across M teams, the GKs
+ * are spread across slots rather than piling into one slot.
+ *
+ *   slots: [[t1,t2], [t3,t4]] → GK rotation: [t1, t3, t2, t4]
+ *
+ * That way with 2 GKs: t1 and t3 each get one — one per slot.
+ * With 4 GKs: each team gets one.
+ */
+function goalkeeperRotation(teams: readonly BalancerTeam[]): BalancerTeam[] {
+  const bySlot = new Map<number, BalancerTeam[]>();
+  for (const t of teams) {
+    if (!bySlot.has(t.slot_number)) bySlot.set(t.slot_number, []);
+    bySlot.get(t.slot_number)!.push(t);
+  }
+  const slotGroups = Array.from(bySlot.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([, list]) => list);
+  const out: BalancerTeam[] = [];
+  const maxLen = Math.max(0, ...slotGroups.map((g) => g.length));
+  for (let i = 0; i < maxLen; i++) {
+    for (const g of slotGroups) {
+      if (g[i]) out.push(g[i]);
     }
   }
-  return false;
+  return out;
 }
 
-export type BalancedTeam = { players: Player[]; totalScore: number };
-
 /**
- * Ability-balanced team generator with goalkeeper-first distribution.
+ * Slot-aware ability-balanced team generator.
+ *
+ * Returns a Map of teamId → players assigned to that team.
  *
  * Algorithm:
  *   1. Split goalkeepers from outfield players.
- *   2. Sort goalkeepers by ability (strongest first) and distribute one to
- *      each team in order. Any extra GKs go back into the outfield pool so
- *      they still get a game.
- *   3. For the remaining outfield players, group by pair_group (units glued
- *      together), sort by ability score descending, then greedy-assign each
- *      unit to the team with the lowest running total — skipping teams that
- *      would break a separation_group constraint.
+ *   2. Distribute GKs across teams using a slot-interleaved rotation so that
+ *      every slot gets at least one keeper before any slot gets two.
+ *      Extra GKs (more keepers than teams) fall back into the outfield pool
+ *      — they still play.
+ *   3. Build units (pair_group glues players together) sorted by score desc.
+ *   4. Greedy-assign each unit to the team with the lowest running ability
+ *      score (ties broken by team size) — skipping teams that would break a
+ *      separation_group constraint. This naturally balances ability across
+ *      teams AND across slots, because every team is competing for the same
+ *      pool and overall slot totals even out.
  *
- * This keeps teams balanced by:
- *   - Guaranteeing a keeper in every team (when enough keepers exist)
- *   - Spreading Advanced/Intermediate/Developing evenly via the score sum
- *   - Respecting pair_group (friends stay together) and
- *     separation_group (certain kids kept apart)
+ * Siblings (same pair_group) stay on the same team and therefore in the same
+ * slot. That matches Livingston's weekly convention: siblings arrive and
+ * leave at the same time regardless of which of the slot's teams they play on.
  */
-export function balanceTeams(players: Player[], numTeams: number): BalancedTeam[] {
-  if (numTeams <= 0) return [];
+export function balanceTeams(
+  players: Player[],
+  teams: readonly BalancerTeam[]
+): Map<string, Player[]> {
+  const result = new Map<string, Player[]>();
+  const scores = new Map<string, number>();
+  const seps = new Map<string, Set<string>>();
+  for (const t of teams) {
+    result.set(t.id, []);
+    scores.set(t.id, 0);
+    seps.set(t.id, new Set());
+  }
 
-  const teams: Unit[][] = Array.from({ length: numTeams }, () => []);
-  const teamScores = new Array(numTeams).fill(0);
-  const teamSizes = new Array(numTeams).fill(0);
+  if (teams.length === 0 || players.length === 0) return result;
 
-  // 1. Goalkeepers: one per team, strongest first.
+  // 1. Goalkeepers — slot-interleaved rotation.
+  const rotation = goalkeeperRotation(teams);
   const gks = players.filter(isGoalkeeper).sort((a, b) => scoreOf(b) - scoreOf(a));
-  const outfieldStart = players.filter((p) => !isGoalkeeper(p));
-
   const extraGks: Player[] = [];
-  gks.forEach((gk, idx) => {
-    if (idx < numTeams) {
-      const unit: Unit = {
-        players: [gk],
-        totalScore: scoreOf(gk),
-        separations: new Set(gk.separation_group ? [gk.separation_group] : []),
-      };
-      teams[idx].push(unit);
-      teamScores[idx] += unit.totalScore;
-      teamSizes[idx] += 1;
+  gks.forEach((gk, i) => {
+    if (i < rotation.length) {
+      const t = rotation[i];
+      result.get(t.id)!.push(gk);
+      scores.set(t.id, scores.get(t.id)! + scoreOf(gk));
+      if (gk.separation_group) seps.get(t.id)!.add(gk.separation_group);
     } else {
       extraGks.push(gk);
     }
   });
 
-  // 2. Outfield units (plus any surplus keepers), greedy balance.
-  const units = buildUnits([...outfieldStart, ...extraGks]).sort(
-    (a, b) => b.totalScore - a.totalScore
-  );
+  // 2. Outfield players + surplus GKs, built into pair/separation units.
+  const outfieldPool = [...players.filter((p) => !isGoalkeeper(p)), ...extraGks];
+  const units = buildUnits(outfieldPool).sort((a, b) => b.totalScore - a.totalScore);
 
   for (const unit of units) {
-    let best = -1;
-    for (let i = 0; i < numTeams; i++) {
-      if (hasSeparationConflict(teams[i], unit)) continue;
-      if (best === -1) {
-        best = i;
+    let best: string | null = null;
+    for (const t of teams) {
+      const teamSeps = seps.get(t.id)!;
+      let conflict = false;
+      for (const s of unit.separations) {
+        if (teamSeps.has(s)) {
+          conflict = true;
+          break;
+        }
+      }
+      if (conflict) continue;
+      if (best === null) {
+        best = t.id;
         continue;
       }
-      if (teamScores[i] < teamScores[best]) best = i;
-      else if (teamScores[i] === teamScores[best] && teamSizes[i] < teamSizes[best])
-        best = i;
+      const currScore = scores.get(t.id)!;
+      const bestScore = scores.get(best)!;
+      if (currScore < bestScore) {
+        best = t.id;
+      } else if (
+        currScore === bestScore &&
+        result.get(t.id)!.length < result.get(best)!.length
+      ) {
+        best = t.id;
+      }
     }
-    if (best === -1) {
-      best = teamScores.indexOf(Math.min(...teamScores));
+
+    // Fallback: no team accepts the unit due to separation conflicts everywhere.
+    // Drop to the team with the lowest score and accept the conflict.
+    if (best === null) {
+      best = teams.reduce((acc, t) =>
+        scores.get(t.id)! < scores.get(acc.id)! ? t : acc
+      ).id;
     }
-    teams[best].push(unit);
-    teamScores[best] += unit.totalScore;
-    teamSizes[best] += unit.players.length;
+
+    for (const p of unit.players) result.get(best)!.push(p);
+    scores.set(best, scores.get(best)! + unit.totalScore);
+    for (const s of unit.separations) seps.get(best)!.add(s);
   }
 
-  return teams.map((team) => ({
-    players: team.flatMap((u) => u.players),
-    totalScore: team.reduce((s, u) => s + u.totalScore, 0),
-  }));
+  return result;
 }

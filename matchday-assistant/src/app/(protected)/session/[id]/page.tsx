@@ -31,7 +31,12 @@ export default async function SessionDetailPage({ params }: { params: { id: stri
   const [playersRes, teamsRes, teamPlayersRes, attendanceRes, matchesRes] =
     await Promise.all([
       supabase.from("players").select("*").eq("club_id", clubId).eq("is_active", true),
-      supabase.from("teams").select("*").eq("session_id", session.id),
+      supabase
+        .from("teams")
+        .select("*")
+        .eq("session_id", session.id)
+        .order("slot_number", { ascending: true })
+        .order("team_name", { ascending: true }),
       supabase.from("team_players").select("*").eq("club_id", clubId),
       supabase.from("attendance").select("*").eq("session_id", session.id),
       supabase.from("matches").select("*").eq("session_id", session.id),

@@ -80,6 +80,8 @@ export type TeamRow = {
   team_name: string;
   team_colour: string | null;
   coach_name: string | null;
+  slot_number: number;
+  slot_label: string | null;
 };
 
 export type TeamPlayerRow = {
